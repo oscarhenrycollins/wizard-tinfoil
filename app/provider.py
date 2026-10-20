@@ -2,13 +2,44 @@
 import datetime
 import json
 import logging
+import os
 import sys
 logging.disable(logging.CRITICAL)
+
+def proxy_client(api_key, timeout):
+    """Pinned SDK 0.14.0 adapter: only its HTTP transport gains CONNECT support.
+
+    Bundle mode avoids random router / direct AMD / GitHub lookups. Sigstore
+    verification and trust-root refresh remain enabled and unmodified.
+    SDK's custom httpx.HTTPTransport ignores environment proxies by default.
+    """
+    import httpx
+    from ehbp import EHBPTransport
+    from openai import OpenAI
+    from tinfoil import TinfoilAI
+    from tinfoil.client import SecureClient
+
+    class ProxySecureClient(SecureClient):
+        def _build_ehbp_sync_transport(self):
+            key = self._require_hpke_public_key()
+            transport = httpx.HTTPTransport(proxy=os.environ.get('HTTPS_PROXY') or os.environ['https_proxy'])
+            return EHBPTransport.from_public_key_hex(key, inner=transport)
+
+    secure = ProxySecureClient(enclave='inference.tinfoil.sh', repo='tinfoilsh/confidential-model-router', attestation_bundle_url='https://atc.tinfoil.sh')
+    http = secure.make_secure_http_client()  # official verification, fail closed
+    result = TinfoilAI.__new__(TinfoilAI)
+    result._secure_client = secure
+    result.api_key, result.enclave = api_key, secure.enclave
+    result.client = OpenAI(api_key=api_key, timeout=timeout,
+                           base_url=f'https://{secure.enclave}/v1/', http_client=http)
+    result.chat, result.embeddings, result.audio = result.client.chat, result.client.embeddings, result.client.audio
+    return result
+
 
 def run(action, request, factory=None):
     if factory is None:
         from tinfoil import TinfoilAI
-        factory = TinfoilAI
+        factory = proxy_client if os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy') else TinfoilAI
     # No direct OpenAI fallback, custom host, transport override or measurement bypass.
     client = factory(api_key=request['key'], timeout=30)
     try:

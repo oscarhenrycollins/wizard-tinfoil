@@ -2,12 +2,26 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Tinfoil Connection",
-    "version": "0.1.0"
+    "version": "0.3.0"
   },
   "paths": {
+    "/api/private-clients": {
+      "post": {
+        "description": "Owner/box-only; same guards as /api/connect. Mint or rotate an agent's relay bearer; only SHA-256 is stored. Never expose this route as an agent tool.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["agent"], "additionalProperties": false, "properties": {"agent": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"}}}}}},
+        "responses": {"200": {"description": "Opaque token and relay_url; no provider key"}, "400": {"description": "Invalid agent or body"}, "403": {"description": "Owner write guards refused"}}
+      }
+    },
+    "/api/private-clients/{agent}": {
+      "delete": {
+        "description": "Owner/box-only; same guards as /api/connect. Idempotently revoke the agent's relay bearer.",
+        "parameters": [{"name": "agent", "in": "path", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"}}],
+        "responses": {"204": {"description": "Revoked (also when absent)"}, "400": {"description": "Invalid agent"}, "403": {"description": "Owner write guards refused"}}
+      }
+    },
     "/api/connection": {
       "get": {
-        "description": "Box-only wizard.ai-connection/1 status, no secret. No provider I/O; cached last successful verification.",
+        "description": "Box-only wizard.ai-connection/1 status, no secret. No provider I/O; cached last successful verification. Chat models use [{id,label}] objects.",
         "responses": {
           "200": {
             "description": "Successful sanitized result"

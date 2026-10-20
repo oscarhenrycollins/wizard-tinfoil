@@ -4,6 +4,11 @@ services:
   wizard-tinfoil:
     image: ghcr.io/humanitylabs-org/wizard-tinfoil:0.2.0@sha256:b20279a34a26b61dbde4adcc6ed3aa5221d2ca3a50db26c6f1855bc79b06df5f
     user: "1000:1000"
+    restart: "no"
+    dns: ["127.0.0.1"]
+    networks: [provider-bootstrap]
+    # Runtime attaches the internal 10.252.x.0/24 relay network; never publish to host.
+    expose: ["8090"]
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -12,6 +17,7 @@ services:
     tmpfs: ["/tmp:rw,nosuid,size=64m,uid=1000,gid=1000"]
     environment:
       PORT: "18804"
+      HTTPS_PROXY: http://wizard-egress-proxy:3128
       APP_PORT: ${APP_PORT:-18804}
       DATA_DIR: /data/private
       HOME: /data/private
@@ -29,6 +35,13 @@ services:
     x-runtipi:
       is_main: true
       internal_port: 18804
+# Bootstrap is internal even before the runtime links/reconciles the provider.
+# Runtime replaces this attachment with its relay + per-app egress networks.
+networks:
+  provider-bootstrap:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
 volumes:
   # Fixed name: the saved key survives updates, reinstalls and recipe changes.
   tinfoil-private-data:

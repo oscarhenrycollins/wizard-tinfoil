@@ -26,6 +26,73 @@ Host/Origin allowlists prevent DNS rebinding and cross-site writes. Browser muta
 
 Streaming is currently **buffered SSE**, not real-time token streaming. Tool-call fields and non-streaming completions pass through the official SDK. No Responses, embedding or audio gateway is implemented. Disconnect blocks new requests; already admitted requests may finish. The `chatIntegration` status field is app-local and does not inspect external Hermes registration.
 
+## Private-provider relay (0.3.0)
+
+An independent listener on container port **8090** relays EHBP ciphertext; the
+existing SDK-backed, decrypting `/v1` gateway on the main port is unchanged.
+Nothing publishes 8090 on the host. The Agent Service attaches an internal
+`10.252.x.0/24` network with alias `wizard-tinfoil-relay`. Admission uses the
+actual peer socket address and a matching **current interface subnet**, not the
+whole reserved /16 or a forwarded header. Even health checks require that subnet.
+
+On the existing owner/box port, `POST /api/private-clients` with
+`{"agent":"agent-id"}` returns a fresh opaque `token` and
+`relay_url: "http://wizard-tinfoil-relay:8090"`. Repeating the request revokes
+the previous token. `DELETE /api/private-clients/agent-id` revokes it (204,
+idempotent). Both routes reuse the key-save route's Host/Origin and
+`X-Wizard-Request: 1` write guards, plus the box-only API's forwarding refusal.
+Agent IDs contain 1–128 letters, digits,
+underscores or hyphens and start with a letter/digit. Only SHA-256 token digests
+are persisted, atomically at mode 0600, in `private-clients.json`.
+`GET /api/connection` returns chat models as `[{id,label}]`; `/api/status`, MCP,
+and the legacy gateway retain their existing representations.
+
+The relay requires that per-agent bearer for `GET /attestation` (forwarded to
+ATC) and `POST /v1/*`. POST additionally requires `Ehbp-Encapsulated-Key` and
+`X-Tinfoil-Enclave-Url`: an HTTPS origin ending `.tinfoil.sh`, no userinfo,
+nonstandard port, path, query or fragment. It strips client credentials, adds
+the saved provider key, forwards encrypted framing and `Ehbp-Response-Nonce`,
+and flushes bounded chunks in both directions without parsing payloads. It
+never follows redirects, logs request bodies/headers or uses an SDK/decrypts.
+Missing key, transport failure and invalid admission fail closed. Revocation
+and Disconnect block new admissions; already admitted requests may finish.
+
+**SDK integration caveat:** official Python 0.14.0 and JavaScript 1.2.2 reject
+an HTTP attestation bundle URL and do not send the configured bearer during
+bundle fetching. The literal shared HTTP-relay client configuration therefore
+needs an explicit client-side transport adapter; it does not work unchanged.
+Python also tries online Sigstore TUF refreshes even with a complete bundle.
+The live probe below uses the official JS SDK with a test-only loopback HTTPS
+attestation adapter and an ephemeral trusted CA, adding the token on the hop
+to the relay. All SDK attestation verification and EHBP remain enabled. This
+proves the relay, not compatibility with an unmodified HTTP-bundle client.
+
+Reproduce the opt-in, paid live proof in isolated disposable networks:
+
+```sh
+docker build -t pp-test-tinfoil-relay -f app/Dockerfile .
+docker run --rm --network none -v "$PWD/tests:/app/tests:ro" pp-test-tinfoil-relay python -m unittest discover -s tests -v
+docker build -t pp-test-relay-client -f tests/relay-client.Dockerfile tests
+python3 tests/live_relay.py --key-env /path/to/owner/tinfoil.env
+docker image rm pp-test-relay-client pp-test-tinfoil-relay
+```
+
+The env file must contain `TINFOIL_API_KEY`; it is read by the test process,
+never mounted, copied, printed or passed to the SDK client. The app saves it
+through its own route into disposable tmpfs. The client has only the internal
+network, no internet, and no provider key. The capture helper alone has NET_RAW;
+the provider and client run non-root, read-only and cap-drop ALL. The test checks
+verified streaming/nonstreaming `OK`, actual off-subnet refusal, token rotation
+and revocation, both EHBP headers on captured relay traffic, and absence of the
+random `PRIVPROBE-…` codeword from captured wire, app logs (stdout/stderr) and all
+app `/data` files. Only capture summary booleans/counts are emitted; packet
+payloads and tokens are not saved. Containers/networks are removed in `finally`;
+remove the two test image tags afterwards. No live installation is touched.
+
+The compose digest deliberately remains the previously published image:
+Miguel must publish/re-pin 0.3.0 using the existing release workflow after review;
+this branch does not invent or overwrite a registry digest.
+
 ## Packaging and verification
 The recipe uses uid 1000, a read-only root filesystem, dropped capabilities, no-new-privileges, and only its own named private data volume. Runtipi recursively chmods bind-mounted app-data during lifecycle actions; the named volume keeps credential permissions outside that operation. Images are published for amd64 and arm64.
 
