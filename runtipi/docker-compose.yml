@@ -2,8 +2,13 @@
 # reaches Tinfoil only through this app's box-only gateway (/v1) with a separate local token.
 services:
   wizard-tinfoil:
-    image: ghcr.io/humanitylabs-org/wizard-tinfoil:0.3.1@sha256:ecd491d39a585aa37e47681a309f16e9492728ab331131bdca7186af19f7ad95
+    image: ghcr.io/humanitylabs-org/wizard-tinfoil:0.4.0
     user: "1000:1000"
+    restart: "no"
+    dns: ["127.0.0.1"]
+    networks: [provider-bootstrap]
+    # Runtime attaches the internal 10.252.x.0/24 relay network; never publish to host.
+    expose: ["8090"]
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -12,6 +17,7 @@ services:
     tmpfs: ["/tmp:rw,nosuid,size=64m,uid=1000,gid=1000"]
     environment:
       PORT: "18804"
+      HTTPS_PROXY: http://wizard-egress-proxy:3128
       APP_PORT: ${APP_PORT:-18804}
       DATA_DIR: /data/private
       HOME: /data/private
@@ -19,6 +25,9 @@ services:
       XDG_DATA_HOME: /data/private/share
       WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
+      # App Manager provisions the Router's incoming grant here (or injects a mounted path).
+      # Missing/invalid grants always refuse the new Router-only endpoints.
+      WIZARD_GRANTS_FILE: ${WIZARD_GRANTS_FILE:-/data/private/router-grants.json}
       # The agent's dashboard: the Hermes Agent app by name, or (alongside) the host dashboard the App Manager sets.
       WIZARD_TINFOIL_HERMES_URL: ${WIZARD_TINFOIL_HERMES_URL:-http://hermes-agent:9119}
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-hermes}
@@ -29,6 +38,13 @@ services:
     x-runtipi:
       is_main: true
       internal_port: 18804
+# Bootstrap is internal even before the runtime links/reconciles the provider.
+# Runtime replaces this attachment with its relay + per-app egress networks.
+networks:
+  provider-bootstrap:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
 volumes:
   # Fixed name: the saved key survives updates, reinstalls and recipe changes.
   tinfoil-private-data:

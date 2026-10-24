@@ -1,0 +1,9 @@
+{
+  "name": "wizard-tinfoil-realtime",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22.13"},
+  "scripts": {"test": "node --test ../tests/test-realtime.mjs"},
+  "dependencies": {"tinfoil": "1.2.1"}
+}

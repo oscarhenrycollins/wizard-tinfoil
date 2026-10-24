@@ -1,6 +1,9 @@
 *
 !app/
 !app/*.py
+!app/*.mjs
+!app/package.json
+!app/package-lock.json
 !app/Dockerfile
 !web/
 !web/*

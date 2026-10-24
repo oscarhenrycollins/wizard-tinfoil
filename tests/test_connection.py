@@ -90,7 +90,8 @@ class Tests(unittest.TestCase):
                 events.append('verified-constructor')
                 self.client=NS(models=NS(list=lambda: NS(data=[NS(id='test-model')])),close=lambda: events.append('close'))
                 self.chat=NS(completions=NS(create=lambda **kw: NS(model_dump=lambda **kw:{'object':'chat.completion'})))
-        self.assertEqual(p.run('verify',{'key':KEY},Client)['models'],['test-model'])
+        v=p.run('verify',{'key':KEY},Client)
+        self.assertEqual(v['models'],['test-model']); self.assertIs(v['authenticated'],True)
         self.assertEqual(p.run('infer',{'key':KEY,'payload':{'model':'test-model','messages':[]}},Client)['object'],'chat.completion')
         self.assertEqual(events,['verified-constructor','close','verified-constructor','close'])
     def test_06_real_sdk_attestation_failure_blocks_requests(self):
