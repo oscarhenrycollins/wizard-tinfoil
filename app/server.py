@@ -16,6 +16,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'app'))
+from router_api import router_allowed, models as router_models, infer_payload, infer_events
+from live import serve as live_serve
 DATA = Path(os.environ.get('DATA_DIR', ROOT / '.data'))
 PORT = os.environ.get('PORT', '18803')
 LOCK = threading.RLock()
@@ -182,7 +185,7 @@ TOOLS = [{'name':'billing_summary','description':'Read Tinfoil spend and credit 
 def rpc(m):
     i=m.get('id'); method=m.get('method'); p=m.get('params') or {}
     if 'id' not in m: return None
-    if method=='initialize': r={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'wizard-tinfoil','version':'0.3.1'}}
+    if method=='initialize': r={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'wizard-tinfoil','version':'0.4.0'}}
     elif method=='tools/list': r={'tools':TOOLS}
     elif method=='ping': r={}
     elif method=='tools/call' and p.get('name')=='connection_status' and not p.get('arguments'):
@@ -206,6 +209,9 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in ORIGINS or self.headers.get('Sec-Fetch-Site')=='cross-site': self.send(403,{'error':'Cross-site request refused.'}); return True
         if path=='/mcp' or path=='/api/connection' or path.startswith('/v1/'):
             if any(k.lower() in {'tailscale-user-login','x-forwarded-for','forwarded','x-real-ip'} or k.lower().startswith('cf-') for k in self.headers): self.send(403,{'error':'Box-only endpoint.'}); return True
+        if path in ('/api/infer', '/v1/live'):
+            if not router_allowed(self.headers): self.send(403,{'error':'Connection Router grant required.'}); return True
+            return False
         if write and path.startswith('/api/') and (origin not in ORIGINS or self.headers.get('X-Wizard-Request')!='1'): self.send(403,{'error':'Use the trusted connection page.'}); return True
         if path.startswith('/v1/'):
             token=json.loads((DATA/'gateway-token.json').read_text())['token']
@@ -215,8 +221,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path=urlsplit(self.path).path
         if self.refused(path): return
-        if path=='/healthz': return self.send(200,{'ok':True,'app':'wizard-tinfoil','version':'0.3.1'})
-        if path in ('/api/connection', '/api/status'): return self.send(200,status())
+        if path=='/healthz': return self.send(200,{'ok':True,'app':'wizard-tinfoil','version':'0.4.0'})
+        if path=='/api/connection':
+            current=status()
+            return self.send(200,{**current,'contract':'wizard.ai-connection/2','models':router_models(current['models'])})
+        if path=='/api/status': return self.send(200,status())
+        if path=='/v1/live':
+            if self.command != 'GET' or self.headers.get('Upgrade','').lower() != 'websocket': return self.send(400,{'error':'WebSocket upgrade required.'})
+            return live_serve(self, (stored() or {}).get('key'))
         if path=='/v1/models': return self.send(200,{'object':'list','data':[{'id':x,'object':'model','owned_by':'tinfoil'} for x in status()['models']]})
         if path=='/openapi.json': return self.send(200,(ROOT/'openapi.json').read_bytes())
         name='index.html' if path=='/' else path[1:]
@@ -231,6 +243,29 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<n<=1048576: return self.send(413,{'error':'Invalid body size.'})
             body=json.loads(self.rfile.read(n))
             if not isinstance(body,dict): raise ValueError()
+            if path=='/api/infer':
+                self.send_response(200)
+                self.send_header('Content-Type','text/event-stream')
+                self.send_header('Cache-Control','no-store')
+                self.send_header('X-Accel-Buffering','no')
+                self.end_headers()
+                def emit(event):
+                    self.wfile.write(('event: '+event['type']+'\ndata: '+json.dumps(event)+'\n\n').encode()); self.wfile.flush()
+                s=stored()
+                if not s: emit({'type':'error','code':'signed_out'}); return
+                try: payload=infer_payload(body,s['models'])
+                except (ValueError,TypeError): emit({'type':'error','code':'provider_error'}); return
+                events=infer_events(s['key'],payload)
+                try:
+                    for event in events:
+                        if event['type']=='done':
+                            with LOCK:
+                                current=stored()
+                                if current and hmac.compare_digest(current['key'],s['key']): atomic('connection.json',{**current,'authenticated':True})
+                        emit(event)
+                except (BrokenPipeError,ConnectionResetError): pass
+                finally: events.close()
+                return
             if path=='/mcp':
                 r=rpc(body); return self.send(202 if r is None else 200,r)
             if path=='/api/connect':

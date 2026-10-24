@@ -2,12 +2,32 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Tinfoil Connection",
-    "version": "0.3.0"
+    "version": "0.4.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "RouterGrant": {"type": "apiKey", "in": "header", "name": "X-Wizard-Grant", "description": "Grant whose incoming identity is wizard-connection-router in WIZARD_GRANTS_FILE. No browser/owner credentials or local gateway bearer."}
+    }
   },
   "paths": {
+    "/api/infer": {
+      "post": {
+        "description": "Router-only wizard.ai-connection/2 inference through the official attested Python SDK. Body: model, optional system, messages (user/assistant text), max_tokens, stream, abilities. Always SSE, including stream:false: delta data {type:delta,text}, then done {type:done,model,usage} or error {type:error,code}. Codes: signed_out, limit, unreachable, provider_error. No implicit model substitution or upstream URL overrides.",
+        "security": [{"RouterGrant": []}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["model", "messages"], "properties": {"model": {"type": "string"}, "system": {"type": "string"}, "messages": {"type": "array", "items": {"type": "object"}}, "max_tokens": {"type": "integer", "minimum": 1, "maximum": 32768}, "stream": {"type": "boolean"}, "abilities": {"type": "array", "items": {"type": "string", "enum": ["text", "streaming"]}}}}}}},
+        "responses": {"200": {"description": "Inference SSE", "content": {"text/event-stream": {"schema": {"type": "string"}}}}, "403": {"description": "Missing/invalid Router grant, forwarded request or browser credentials"}}
+      }
+    },
+    "/v1/live": {
+      "get": {
+        "description": "Router-only WebSocket wizard.live-transcription/1. First text: start with format pcm_s16le, sample_rate 16000, channels 1, language null. Then binary PCM frames <=65536 bytes and text commit or stop. Replies: ready (provider/model), delta/final (text), error (code/message), closed then normal close. Audio before ready is queued. Each committed utterance rotates the official attested Tinfoil realtime session; no audio or transcripts are logged.",
+        "security": [{"RouterGrant": []}],
+        "responses": {"101": {"description": "WebSocket established"}, "400": {"description": "WebSocket upgrade required"}, "403": {"description": "Router grant required"}}
+      }
+    },
     "/api/connection": {
       "get": {
-        "description": "Box-only wizard.ai-connection/1 status, no secret. No provider I/O; cached last successful verification.",
+        "description": "Box-only wizard.ai-connection/2 status and catalog-backed model descriptors (id, label, tier, abilities, context). Includes the /1 status, gateway and credential-verification fields. No secret or provider I/O; cached last successful verification.",
         "responses": {
           "200": {
             "description": "Successful sanitized result"

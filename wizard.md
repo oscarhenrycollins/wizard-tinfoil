@@ -4,7 +4,8 @@ id: wizard-tinfoil
 name: Tinfoil
 type: external
 category: system
-version: 0.3.1
+version: 0.4.0
+private: true
 summary: Private AI. Connect your Tinfoil API key and your agent gets a private, enclave-verified model.
 tags: [security]
 license: GPL-3.0-only
@@ -29,7 +30,7 @@ view:
     path: web
     build: python3 app/build_view.py
     dist: web
-provides: [ai-connection, tinfoil-api-key]
+provides: [ai-connection, tinfoil-api-key, private-inference, live-transcription]
 system: true
 uses: [hermes-agent]
 needs: []

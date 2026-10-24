@@ -11,7 +11,7 @@
   ],
   "description": "Private AI inference for your Wizard. Paste a Tinfoil API key (from dash.tinfoil.sh) and your agent gets a private model choice: every request goes through Tinfoil's official SDK, which checks the secure enclave before anything is sent, with no unverified fallback. The key stays inside this app; the agent only gets a local token for this box. Needs the Hermes Agent app (or a Wizard installed alongside an existing Hermes).",
   "tipi_version": 6,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "source": "https://github.com/oscarhenrycollins/wizard-tinfoil",
   "exposable": false,
   "supported_architectures": [

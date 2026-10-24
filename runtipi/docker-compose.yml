@@ -2,7 +2,7 @@
 # reaches Tinfoil only through this app's box-only gateway (/v1) with a separate local token.
 services:
   wizard-tinfoil:
-    image: ghcr.io/humanitylabs-org/wizard-tinfoil:0.3.1@sha256:ecd491d39a585aa37e47681a309f16e9492728ab331131bdca7186af19f7ad95
+    image: ghcr.io/humanitylabs-org/wizard-tinfoil:0.4.0
     user: "1000:1000"
     read_only: true
     cap_drop: [ALL]
@@ -19,6 +19,9 @@ services:
       XDG_DATA_HOME: /data/private/share
       WIZARD_TRUSTED_HOSTS: ${WIZARD_TRUSTED_HOSTS:-}
       WIZARD_TRUSTED_ORIGINS: ${WIZARD_TRUSTED_ORIGINS:-}
+      # App Manager provisions the Router's incoming grant here (or injects a mounted path).
+      # Missing/invalid grants always refuse the new Router-only endpoints.
+      WIZARD_GRANTS_FILE: ${WIZARD_GRANTS_FILE:-/data/private/router-grants.json}
       # The agent's dashboard: the Hermes Agent app by name, or (alongside) the host dashboard the App Manager sets.
       WIZARD_TINFOIL_HERMES_URL: ${WIZARD_TINFOIL_HERMES_URL:-http://hermes-agent:9119}
       HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-hermes}
