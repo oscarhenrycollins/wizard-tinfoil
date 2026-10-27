@@ -4,7 +4,7 @@ id: wizard-tinfoil
 name: Tinfoil
 type: external
 category: system
-version: 0.3.2
+version: 0.3.3
 summary: Private AI. Connect your Tinfoil API key and your agent gets a private, enclave-verified model.
 tags: [security]
 license: GPL-3.0-only
